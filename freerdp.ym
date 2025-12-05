@@ -1,0 +1,292 @@
+name: 🚀 SEVER AI STV PREMIUM
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: '🕐 Thời gian sử dụng'
+        required: false
+        default: '5h40m'
+        type: choice
+        options:
+        - '1h'
+        - '3h' 
+        - '5h40m'
+
+jobs:
+  Premium-RDP-Setup:
+    runs-on: ubuntu-latest  # Menggunakan Ubuntu terbaru (saat ini 22.04, tapi bisa diupdate ke 24.04 jika tersedia)
+    timeout-minutes: 340
+    
+    steps:
+      # BANNER CHÀO MỪNG
+      - name: 🎯 KHỞI ĐỘNG HỆ THỐNG
+        run: |
+          echo ""
+          echo ""
+          echo "🤖 AI STV PREMIUM RDP SERVER" 
+          echo "⚡ Powered by AI STV" 
+          echo "🕒 Thời gian: ${{ github.event.inputs.duration }}" 
+          echo ""
+          
+          # Hiệu ứng loading
+          frames=('⣾' '⣽' '⣻' '⢿' '⡿' '⣟' '⣯' '⣷')
+          for i in {1..10}; do
+              echo -ne "\r🚀 Đang khởi tạo hệ thống... ${frames[$((i % 8))]}" 
+              sleep 0.1
+          done
+          echo -e "\r✅ Hệ thống đã sẵn sàng!                    "
+
+      # CẤU HÌNH NÂNG CAO
+      - name: 🔧 CẤU HÌNH HỆ THỐNG
+        run: |
+          echo ""
+          echo "🛠️  ĐANG CẤU HÌNH HỆ THỐNG"
+          
+          # Update system
+          sudo apt update -y
+          
+          # Install desktop environment (XFCE4) and RDP server (xrdp)
+          sudo apt install -y xfce4 xfce4-goodies xrdp tightvncserver
+          
+          # Configure xrdp
+          sudo sed -i 's/port=3389/port=3389/' /etc/xrdp/xrdp.ini
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+          
+          # Open port 3389 in firewall
+          sudo ufw allow 3389/tcp
+          
+          echo "🎯 Cấu hình hoàn tất!"
+
+      # TẠO USER PREMIUM
+      - name: 👤 TẠO TÀI KHOẢN PREMIUM
+        run: |
+          echo ""
+          echo "👤 ĐANG TẠO TÀI KHOẢN PREMIUM"
+          
+          # Function to generate password (8 chars, with upper, lower, number)
+          generate_password() {
+              upper="ABCDEFGHJKLMNPQRSTUVWXYZ"
+              lower="abcdefghijkmnpqrstuvwxyz"
+              numbers="23456789"
+              all="$upper$lower$numbers"
+              
+              pw="${upper:$((RANDOM % ${#upper})):1}"
+              pw+="${lower:$((RANDOM % ${#lower})):1}"
+              pw+="${numbers:$((RANDOM % ${#numbers})):1}"
+              
+              for i in {1..5}; do
+                  pw+="${all:$((RANDOM % ${#all})):1}"
+              done
+              
+              # Shuffle
+              echo "$pw" | fold -w1 | shuf | tr -d '\n'
+          }
+          
+          # Use custom password if set
+          if [ -n "$CUSTOM_RDP_PASS" ]; then
+              matkhau="$CUSTOM_RDP_PASS"
+              echo "│ ℹ️  Dùng mật khẩu tùy chỉnh từ env"
+          else
+              matkhau=$(generate_password)
+          fi
+          
+          # Remove old user if exists
+          sudo userdel -r AISTV-PREMIUM 2>/dev/null || echo "│ ℹ️  Không có user cũ để xóa"
+          
+          # Create new user
+          sudo useradd -m -s /bin/bash -p $(openssl passwd -1 "$matkhau") AISTV-PREMIUM
+          sudo usermod -aG sudo AISTV-PREMIUM  # Add to sudo group
+          
+          # Set password never expires (approximation)
+          sudo chage -m 0 -M 99999 -I -1 -E -1 AISTV-PREMIUM
+          
+          echo "RDP_USER=AISTV-PREMIUM" >> $GITHUB_ENV
+          echo "RDP_PASS=$matkhau" >> $GITHUB_ENV
+          echo "$matkhau" > /tmp/rdp_password.txt
+          
+          echo "✅ Tài khoản: AISTV-PREMIUM đã sẵn sàng"
+
+      # KIỂM TRA QUYỀN ĐĂNG NHẬP
+      - name: 🔍 KIỂM TRA QUYỀN HỆ THỐNG
+        run: |
+          echo ""
+          echo "🔍 KIỂM TRA QUYỀN ĐĂNG NHẬP"
+          
+          # Check user exists
+          if id "AISTV-PREMIUM" &>/dev/null; then
+              echo "│ ✅ User AISTV-PREMIUM tồn tại"
+          else
+              echo "│ ❌ User không tồn tại"
+              exit 1
+          fi
+          
+          # Check sudo group
+          if groups AISTV-PREMIUM | grep -q sudo; then
+              echo "│ ✅ Có quyền sudo"
+          else
+              echo "│ ❌ Không có quyền sudo"
+          fi
+          
+          # Check xrdp service
+          if systemctl is-active --quiet xrdp; then
+              echo "│ ✅ Dịch vụ xrdp đang chạy"
+          else
+              echo "│ ❌ Dịch vụ xrdp không chạy"
+          fi
+          
+          echo "🎯 Kiểm tra hoàn tất!"
+
+      # TAILSCALE PREMIUM
+      - name: 🌐 THIẾT LẬP MẠNG PREMIUM
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          echo ""
+          echo "🌐 ĐANG THIẾT LẬP KẾT NỐI MẠNG"
+          
+          # Install Tailscale
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+          # Connect Tailscale
+          sudo tailscale up --authkey=$TAILSCALE_AUTH_KEY --hostname=ai-stv-premium-$GITHUB_RUN_ID --accept-routes --accept-dns --reset
+          
+          # Get IP with retry
+          echo "🔄 Đang lấy địa chỉ IP..."
+          for i in {1..20}; do
+              ip=$(tailscale ip -4 2>/dev/null)
+              if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                  echo "TAILSCALE_IP=$ip" >> $GITHUB_ENV
+                  echo "✅ Địa chỉ IP: $ip"
+                  break
+              fi
+              echo -ne "\r🔄 Đang lấy địa chỉ IP... $(echo -n '.'; for j in {1..$i}; do echo -n '.'; done)"
+              sleep 3
+          done
+          
+          if [[ -z $ip || ! $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "⚠️  Không thể lấy IP, sử dụng localhost"
+              echo "TAILSCALE_IP=localhost" >> $GITHUB_ENV
+          fi
+
+      # HIỂN THỊ GIAO DIỆN ĐẸP
+      - name: 🎉 THÔNG TIN KẾT NỐI
+        run: |
+          matkhau=$(cat /tmp/rdp_password.txt 2>/dev/null || echo "Không thể đọc mật khẩu")
+          
+          # Convert duration to minutes
+          duration_input="${{ github.event.inputs.duration }}"
+          case $duration_input in
+              "1h") total_minutes=60; display_time="1 giờ" ;;
+              "3h") total_minutes=180; display_time="3 giờ" ;;
+              "5h40m") total_minutes=340; display_time="5 giờ 40 phút" ;;
+          esac
+          
+          # Calculate times (assuming UTC+7 for SE Asia)
+          start_time=$(date -d "+7 hours" "+%H:%M:%S")
+          end_time=$(date -d "+7 hours +$total_minutes minutes" "+%H:%M:%S")
+          
+          echo ""
+          echo "┌───────────────────────────────────────────┐" 
+          echo "│              🎉 KẾT NỐI THÀNH CÔNG!              │" 
+          echo "├───────────────────────────────────────────┤" 
+          echo "│ 🌐  Địa chỉ: $TAILSCALE_IP" 
+          echo "│ 👤  Tài khoản: AISTV-PREMIUM" 
+          echo "│ 🔐  Mật khẩu: $matkhau" 
+          echo "│ ⏰  Thời lượng: $display_time" 
+          echo "│ 🕐  Bắt đầu: $start_time" 
+          echo "│ 🕐  Kết thúc: $end_time" 
+          echo "│ 📍  Port: 3389" 
+          echo "├───────────────────────────────────────────┤" 
+          echo "│ 💡  Hướng dẫn:                                    │" 
+          echo "│   1. Mở Remote Desktop Connection                 │" 
+          echo "│   2. Nhập: $TAILSCALE_IP                          │" 
+          echo "│   3. User: AISTV-PREMIUM | Password: trên          │" 
+          echo "│   4. Enjoy! 🚀                                    │" 
+          echo "└───────────────────────────────────────────┘" 
+          
+          echo "TOTAL_MINUTES=$total_minutes" >> $GITHUB_ENV
+
+      # DUY TRÌ PHIÊN ỔN ĐỊNH
+      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC
+        run: |
+          matkhau=$(cat /tmp/rdp_password.txt 2>/dev/null)
+          total_minutes=$TOTAL_MINUTES
+          
+          start_time=$(date -d "+7 hours" "+%H:%M:%S")
+          end_time=$(date -d "+7 hours +$total_minutes minutes" "+%H:%M:%S")
+          
+          echo ""
+          echo "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC..."
+          echo "💎 Phiên: AI STV PREMIUM"
+          echo "🔗 Kết nối: $TAILSCALE_IP"
+          echo "🕐 Bắt đầu: $start_time"
+          echo "🕐 Kết thúc: $end_time"
+          echo ""
+          
+          # Monitor script in background
+          (
+              while true; do
+                  current_time=$(date "+%H:%M:%S")
+                  if systemctl is-active --quiet xrdp; then
+                      status="Running"
+                  else
+                      status="Not Running"
+                  fi
+                  echo "[$current_time] 📊 Trạng thái - xrdp: $status"
+                  sleep 120  # Log every 2 minutes
+              done
+          ) &
+          monitor_pid=$!
+          
+          # Timer
+          frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+          colors=('31' '33' '32' '36' '34' '35')  # ANSI color codes
+          start_seconds=$(date +%s)
+          end_seconds=$((start_seconds + total_minutes * 60))
+          
+          while [ $(date +%s) -lt $end_seconds ]; do
+              current_time=$(date "+%H:%M:%S")
+              remaining_seconds=$((end_seconds - $(date +%s)))
+              hours=$((remaining_seconds / 3600))
+              minutes=$(( (remaining_seconds % 3600) / 60 ))
+              seconds=$((remaining_seconds % 60))
+              
+              frame_index=$(( ($(date +%s) - start_seconds) % 10 ))
+              color_index=$(( ($(date +%s) - start_seconds) / 60 % 6 ))
+              echo -ne "\r${frames[$frame_index]} [$current_time] Thời gian còn lại: $hours giờ $minutes phút $seconds giây" 
+              echo -ne "\e[${colors[$color_index]}m"
+              sleep 5
+          done
+          echo ""
+          echo "🎯 ĐÃ HẾT THỜI GIAN - TỰ ĐỘNG DỪNG!"
+          
+          # Kill monitor
+          kill $monitor_pid 2>/dev/null
+
+      # DỌN DẸP CHUYÊN NGHIỆP
+      - name: 🧹 DỌN DẸP HỆ THỐNG
+        if: always()
+        run: |
+          echo ""
+          echo "🧹 ĐANG DỌN DẸP HỆ THỐNG..."
+          
+          # Remove password file
+          rm -f /tmp/rdp_password.txt
+          
+          # Disable user
+          sudo usermod -L AISTV-PREMIUM 2>/dev/null
+          
+          # Disconnect Tailscale
+          sudo tailscale down --accept-risk=all 2>/dev/null
+          
+          # Close firewall
+          sudo ufw delete allow 3389/tcp
+          
+          # Stop xrdp
+          sudo systemctl stop xrdp
+          sudo systemctl disable xrdp
+          
+          echo ""
+          echo "🎉 Dọn dẹp hoàn tất! Hẹn gặp lại! 👋"
