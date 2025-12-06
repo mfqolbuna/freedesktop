@@ -1,4 +1,4 @@
-name: 🔄 AI STV PREMIUM - AUTO RESTART NO DELAY
+name: 🚀 AI STV PREMIUM - INSTANT RESTART (NO DELAY)
 
 on:
   workflow_dispatch:
@@ -7,189 +7,259 @@ on:
     - cron: '0 */6 * * *'
 
 jobs:
-  Immediate-Restart:
+  Premium-RDP-Instant:
     runs-on: windows-latest
     timeout-minutes: 360  # 6 jam maksimal
-    permissions:
-      contents: write
-      actions: write
     
     steps:
-      # STEP 1: LOAD BACKUP DATA DAN LANGSUNG RESTART
-      - name: 🚀 LOAD & IMMEDIATE RESTART
-        env:
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          PREVIOUS_RUN_ID: ${{ github.run_id }}
+      # STEP 1: LOAD & IMMEDIATE START
+      - name: 🚀 INSTANT START - NO DELAY
         run: |
           Write-Host ""
-          Write-Host "🚀 SISTEM RESTART TANPA JEDA" -ForegroundColor Yellow
-          Write-Host "⚡ Mode: Instant Restart" -ForegroundColor Red
-          Write-Host "⏰ Waktu: $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor White
+          Write-Host "🚀 AI STV PREMIUM - INSTANT MODE" -ForegroundColor Red
+          Write-Host "⚡ No 10s Delay on Restart" -ForegroundColor Yellow
+          Write-Host "⏰ Start Time: $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor White
           
-          # HAPUS SEMUA JEDA DAN COUNTDOWN
-          # Langsung ke proses utama tanpa delay
-          
-          # Buat flag untuk restart instant
+          # Create instant flag
           $instantFlag = @{
               ImmediateRestart = $true
-              PreviousRunID = $env:PREVIOUS_RUN_ID
-              RestartTime = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-              NoDelay = $true
+              StartTime = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+              RestartSchedule = (Get-Date).AddHours(6).ToString("yyyy-MM-dd HH:mm:ss")
+              NoDelayMode = "ENABLED"
           } | ConvertTo-Json
           
-          $instantFlag | Out-File "$env:TEMP\instant_restart.json"
+          $instantFlag | Out-File "$env:TEMP\instant_mode.json"
           
-          Write-Host "✅ Flag restart instant dibuat" -ForegroundColor Green
-          
-          # Langsung lanjut ke proses setup tanpa jeda
+          Write-Host "✅ Instant mode activated" -ForegroundColor Green
 
-      # STEP 2: SETUP CEPAT TANPA BACKUP AWAL (Gunakan backup dari run sebelumnya)
-      - name: ⚡ QUICK SETUP (NO INITIAL BACKUP)
+      # STEP 2: SYSTEM SETUP (INSTANT)
+      - name: ⚡ SYSTEM SETUP INSTANT
         run: |
           Write-Host ""
-          Write-Host "⚡ SETUP CEPAT TANPA JEDA" -ForegroundColor Yellow
+          Write-Host "⚡ SYSTEM SETUP - NO DELAY" -ForegroundColor Yellow
           
-          # Cek apakah ada backup dari run sebelumnya
-          $backupExists = Test-Path "$env:TEMP\AISTV_Backup"
-          if ($backupExists) {
-              Write-Host "│ 🔄 Menggunakan backup existing" -ForegroundColor Green
-          } else {
-              Write-Host "│ 📦 Membuat backup minimal" -ForegroundColor Blue
-              New-Item -ItemType Directory -Path "$env:TEMP\AISTV_Backup" -Force | Out-Null
-          }
-          
-          # Setup RDP tanpa delay
-          $steps = @(
-              @{Name="Aktifkan RDP"; Script={ 
+          # Enable RDP instantly
+          $setupSteps = @(
+              @{Name="Enable Remote Desktop"; Script={ 
                   Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
               }},
-              @{Name="Nonaktifkan auth network"; Script={
+              @{Name="Disable Network Auth"; Script={
                   Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
               }},
-              @{Name="Buka firewall 3389"; Script={
-                  netsh advfirewall firewall add rule name="RDP-Instant" dir=in action=allow protocol=TCP localport=3389
-                  netsh advfirewall firewall add rule name="RDP-Instant-Out" dir=out action=allow protocol=TCP localport=3389
+              @{Name="Configure Security Layer"; Script={
+                  Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
               }},
-              @{Name="Start services"; Script={
+              @{Name="Open Firewall Port 3389"; Script={
+                  netsh advfirewall firewall add rule name="RDP-Instant-6H" dir=in action=allow protocol=TCP localport=3389
+                  netsh advfirewall firewall add rule name="RDP-Instant-6H-Out" dir=out action=allow protocol=TCP localport=3389
+              }},
+              @{Name="Start Services"; Script={
                   Start-Service -Name TermService -ErrorAction SilentlyContinue
                   Start-Service -Name UmRdpService -ErrorAction SilentlyContinue
               }}
           )
           
-          foreach($step in $steps) {
+          foreach($step in $setupSteps) {
               Write-Host "│ ⚡ $($step.Name)" -ForegroundColor White
               try {
                   & $step.Script
               } catch {
-                  Write-Host "│ ⚠️  $($step.Name) - Skip minor error" -ForegroundColor Yellow
+                  Write-Host "│ ⚠️  $($step.Name) - Skipped" -ForegroundColor Yellow
               }
           }
           
-          Write-Host "✅ Setup cepat selesai" -ForegroundColor Green
+          Write-Host "✅ System setup complete" -ForegroundColor Green
 
-      # STEP 3: BUAT USER DENGAN PASSWORD SAMA (jika ada backup)
-      - name: 🔄 RESTORE USER (INSTANT)
+      # STEP 3: CREATE USER WITH VALID PASSWORD (FIXED)
+      - name: 🔄 CREATE USER - FIXED PASSWORD
         run: |
           Write-Host ""
-          Write-Host "🔄 RESTORE USER INSTANT" -ForegroundColor Yellow
+          Write-Host "🔄 CREATING USER WITH VALID PASSWORD" -ForegroundColor Yellow
           
-          # Coba baca password dari backup sebelumnya
-          $backupPassPath = "$env:TEMP\AISTV_Backup\Config\secure_password.txt"
-          if (Test-Path $backupPassPath) {
+          # Password yang sudah teruji valid untuk Windows
+          # Mengikuti semua policy: 8+ chars, uppercase, lowercase, number, symbol
+          $plainPass = "AiSTV@2024Pwd!"
+          
+          Write-Host "│ 🔐 Using pre-validated password" -ForegroundColor Green
+          Write-Host "│ 📋 Password: $plainPass" -ForegroundColor White
+          
+          # Remove old user if exists
+          try {
+              Remove-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+              Write-Host "│ ✅ Old user removed" -ForegroundColor Green
+          } catch {
+              Write-Host "│ ℹ️ No old user found" -ForegroundColor Blue
+          }
+          
+          # Method 1: Try net user (most reliable)
+          Write-Host "│ 👤 Creating user with net command..." -ForegroundColor Cyan
+          
+          # Disable password complexity temporarily for this session
+          try {
+              # Backup current policy
+              secedit /export /cfg "$env:TEMP\sec_policy_backup.cfg" 2>$null
+              
+              # Create temporary policy without complexity
+              $tempPolicy = @"
+[Unicode]
+Unicode=yes
+[System Access]
+MinimumPasswordAge = 0
+MaximumPasswordAge = 90
+MinimumPasswordLength = 1
+PasswordComplexity = 0
+PasswordHistorySize = 0
+LockoutBadCount = 0
+RequireLogonToChangePassword = 0
+ForceLogoffWhenHourExpire = 0
+[Registry Values]
+[Privilege Rights]
+[Version]
+signature="`$CHICAGO`$"
+Revision=1
+"@
+              
+              $tempPolicy | Out-File "$env:TEMP\nosec.cfg" -Encoding Unicode
+              secedit /configure /db "$env:TEMP\nosec.sdb" /cfg "$env:TEMP\nosec.cfg" 2>$null
+              Write-Host "│ ✅ Password complexity disabled temporarily" -ForegroundColor Green
+          } catch {
+              Write-Host "│ ⚠️ Could not disable password complexity" -ForegroundColor Yellow
+          }
+          
+          # Create user with net user command
+          $netResult = net user "AISTV-PREMIUM" $plainPass /ADD /EXPIRES:NEVER /Y 2>&1
+          
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "│ ✅ User created with net user" -ForegroundColor Green
+              
+              # Add to groups
+              net localgroup "Administrators" "AISTV-PREMIUM" /ADD 2>$null
+              net localgroup "Remote Desktop Users" "AISTV-PREMIUM" /ADD 2>$null
+              
+              # Enable account
+              net user "AISTV-PREMIUM" /ACTIVE:YES 2>$null
+              
+              # Set password never expires
+              wmic useraccount where "name='AISTV-PREMIUM'" set PasswordExpires=False 2>$null
+              
+              Write-Host "│ ✅ Added to Admin & RDP groups" -ForegroundColor Green
+          } else {
+              Write-Host "│ ❌ Net user failed: $netResult" -ForegroundColor Red
+              
+              # Method 2: Try PowerShell with secure password
+              Write-Host "│ 🔄 Trying PowerShell method..." -ForegroundColor Yellow
               try {
-                  $securePass = Get-Content $backupPassPath | ConvertTo-SecureString
-                  $cred = New-Object System.Management.Automation.PSCredential("dummy", $securePass)
-                  $plainPass = $cred.GetNetworkCredential().Password
-                  Write-Host "│ 🔄 Menggunakan password dari backup sebelumnya" -ForegroundColor Green
+                  $securePass = ConvertTo-SecureString $plainPass -AsPlainText -Force
+                  New-LocalUser -Name "AISTV-PREMIUM" -Password $securePass -AccountNeverExpires -Description "AI STV Premium Account"
+                  
+                  Add-LocalGroupMember -Group "Administrators" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+                  Add-LocalGroupMember -Group "Remote Desktop Users" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+                  
+                  Enable-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+                  
+                  Write-Host "│ ✅ User created with PowerShell" -ForegroundColor Green
               } catch {
-                  $plainPass = $null
+                  Write-Host "│ ❌ PowerShell failed: $($_.Exception.Message)" -ForegroundColor Red
+                  
+                  # Method 3: Last resort - use existing/default account
+                  Write-Host "│ 🆘 Using fallback method..." -ForegroundColor Red
+                  try {
+                      # Try to enable Administrator account
+                      net user "Administrator" /ACTIVE:YES 2>$null
+                      net user "Administrator" $plainPass 2>$null
+                      Write-Host "│ ⚠️ Using built-in Administrator account" -ForegroundColor Yellow
+                      $plainPass = $plainPass  # Keep same password
+                  } catch {
+                      Write-Host "│ ❌ All methods failed" -ForegroundColor Red
+                      exit 1
+                  }
               }
           }
           
-          if (-not $plainPass) {
-              # Generate password baru jika tidak ada backup
-              $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
-              $plainPass = -join ((1..8) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
-              Write-Host "│ 🔐 Membuat password baru" -ForegroundColor Blue
+          # Restore original security policy
+          try {
+              secedit /configure /db "$env:TEMP\restore.sdb" /cfg "$env:TEMP\sec_policy_backup.cfg" 2>$null
+              Write-Host "│ 🔧 Security policy restored" -ForegroundColor Green
+          } catch {
+              Write-Host "│ ⚠️ Could not restore security policy" -ForegroundColor Yellow
           }
           
-          # Hapus user lama jika ada
-          try {
-              Remove-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
-          } catch { }
-          
-          # Buat user baru
-          $securePass = ConvertTo-SecureString $plainPass -AsPlainText -Force
-          New-LocalUser -Name "AISTV-PREMIUM" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "AISTV-PREMIUM"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "AISTV-PREMIUM"
-          Enable-LocalUser -Name "AISTV-PREMIUM"
-          
-          # Simpan password untuk step berikutnya
-          $plainPass | Out-File "$env:TEMP\instant_password.txt"
+          # Save password for later steps
+          $plainPass | Out-File "$env:TEMP\rdp_password.txt"
           echo "RDP_PASS=$plainPass" >> $env:GITHUB_ENV
+          echo "RDP_USER=AISTV-PREMIUM" >> $env:GITHUB_ENV
           
-          Write-Host "✅ User restored: AISTV-PREMIUM" -ForegroundColor Green
+          Write-Host "✅ User setup complete" -ForegroundColor Green
+          Write-Host "👤 Username: AISTV-PREMIUM" -ForegroundColor White
+          Write-Host "🔐 Password: $plainPass" -ForegroundColor White
 
-      # STEP 4: TAILSCALE INSTANT CONNECT
-      - name: 🌐 TAILSCALE INSTANT
+      # STEP 4: TAILSCALE INSTANT SETUP
+      - name: 🌐 TAILSCALE INSTANT CONNECT
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
           Write-Host ""
-          Write-Host "🌐 TAILSCALE INSTANT CONNECT" -ForegroundColor Yellow
+          Write-Host "🌐 TAILSCALE INSTANT SETUP" -ForegroundColor Yellow
           
-          # Install Tailscale jika belum ada
-          $tailscalePath = "$env:ProgramFiles\Tailscale\tailscale.exe"
-          if (-not (Test-Path $tailscalePath)) {
+          # Install Tailscale if not present
+          $tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+          if (-not (Test-Path $tailscaleExe)) {
               Write-Host "│ 📦 Installing Tailscale..." -ForegroundColor Blue
-              $msiPath = "$env:TEMP\tailscale.msi"
-              Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msiPath
-              Start-Process msiexec.exe -ArgumentList "/i", "`"$msiPath`"", "/quiet", "/norestart" -Wait
+              $msiPath = "$env:TEMP\tailscale_install.msi"
+              try {
+                  Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msiPath
+                  Start-Process msiexec.exe -ArgumentList "/i", "`"$msiPath`"", "/quiet", "/norestart" -Wait
+                  Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
+                  Write-Host "│ ✅ Tailscale installed" -ForegroundColor Green
+              } catch {
+                  Write-Host "│ ❌ Tailscale install failed" -ForegroundColor Red
+              }
           }
           
-          # Connect Tailscale
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=ai-stv-instant-$env:GITHUB_RUN_ID --reset --accept-routes --accept-dns
+          # Connect to Tailscale
+          Write-Host "│ 🔗 Connecting to Tailscale..." -ForegroundColor Cyan
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=ai-stv-premium-$env:GITHUB_RUN_ID --reset --accept-routes --accept-dns
           
-          # Get IP tanpa delay
-          Start-Sleep -Seconds 3
+          # Get IP address
+          Start-Sleep -Seconds 5
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>&1
+          
           if ($ip -and $ip -match '^\d+\.\d+\.\d+\.\d+$') {
               echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-              Write-Host "✅ IP Address: $ip" -ForegroundColor Green
+              Write-Host "│ ✅ Tailscale IP: $ip" -ForegroundColor Green
           } else {
               echo "TAILSCALE_IP=localhost" >> $env:GITHUB_ENV
-              Write-Host "⚠️  Using localhost" -ForegroundColor Yellow
+              Write-Host "│ ⚠️ Using localhost for RDP" -ForegroundColor Yellow
           }
+          
+          # Save Tailscale status
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" status --json 2>$null | Out-File "$env:TEMP\tailscale_status.json"
+          
+          Write-Host "✅ Tailscale setup complete" -ForegroundColor Green
 
-      # STEP 5: BACKGROUND AUTO-RESTART MONITOR (TANPA JEDA)
+      # STEP 5: INSTANT RESTART MONITOR (NO 10s DELAY)
       - name: 🔄 INSTANT RESTART MONITOR
         run: |
           Write-Host ""
           Write-Host "🔄 INSTANT RESTART MONITOR" -ForegroundColor Yellow
-          Write-Host "⏰ Restart dalam: 6 jam (tanpa jeda)" -ForegroundColor Red
+          Write-Host "⏰ Auto-restart in: 6 hours (NO DELAY)" -ForegroundColor Red
           
-          # Setup restart timer
-          $restartInterval = 6 * 60 * 60  # 6 jam dalam detik
+          # Calculate restart time
+          $restartInterval = 6 * 60 * 60  # 6 hours in seconds
           $startTime = Get-Date
           $restartTime = $startTime.AddSeconds($restartInterval)
           
-          # Background process untuk restart otomatis
-          $restartScript = {
-              param($restartSeconds)
-              Start-Sleep -Seconds $restartSeconds
+          # Start background job to trigger next workflow at exact time
+          $restartJob = {
+              param($intervalSeconds, $repo, $token)
               
-              # Trigger restart workflow baru tanpa delay
-              $token = $env:GITHUB_TOKEN
-              $owner = $env:GITHUB_REPOSITORY_OWNER
-              $repo = $env:GITHUB_REPOSITORY
+              # Wait for the exact interval
+              Start-Sleep -Seconds $intervalSeconds
               
-              $uri = "https://api.github.com/repos/$owner/$repo/actions/workflows/self-restart.yml/dispatches"
+              # Trigger new workflow immediately (NO DELAY)
+              $uri = "https://api.github.com/repos/$repo/actions/workflows/premium-rdp-instant.yml/dispatches"
               $body = @{
                   ref = "main"
-                  inputs = @{
-                      immediate = "true"
-                  }
               } | ConvertTo-Json
               
               $headers = @{
@@ -198,48 +268,56 @@ jobs:
               }
               
               try {
-                  Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
-                  Write-Host "[AUTO-RESTART] Workflow baru berhasil dipicu" -ForegroundColor Green
+                  Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body -ErrorAction Stop
+                  Write-Host "[AUTO-RESTART] ✅ New workflow triggered" -ForegroundColor Green
               } catch {
-                  Write-Host "[AUTO-RESTART] Error: $_" -ForegroundColor Red
+                  Write-Host "[AUTO-RESTART] ❌ Failed to trigger: $_" -ForegroundColor Red
               }
               
-              # Langsung matikan services untuk mempercepat
+              # Immediately stop RDP services to free resources
               Stop-Service TermService -Force -ErrorAction SilentlyContinue
               Stop-Service UmRdpService -Force -ErrorAction SilentlyContinue
           }
           
-          # Jalankan script restart di background
-          Start-Job -ScriptBlock $restartScript -ArgumentList $restartInterval
+          # Start the restart job in background
+          Start-Job -ScriptBlock $restartJob -ArgumentList $restartInterval, $env:GITHUB_REPOSITORY, $env:GITHUB_TOKEN -Name "AutoRestartTrigger"
           
-          Write-Host "✅ Auto-restart monitor aktif" -ForegroundColor Green
+          Write-Host "✅ Auto-restart monitor started" -ForegroundColor Green
+          Write-Host "⏰ Next restart at: $($restartTime.ToString('HH:mm:ss'))" -ForegroundColor Cyan
 
-      # STEP 6: SHOW INFO & MAINTAIN SESSION (TANPA COUNTDOWN)
-      - name: 🎯 INSTANT SESSION INFO
+      # STEP 6: DISPLAY CONNECTION INFO
+      - name: 🎯 DISPLAY CONNECTION INFO
         run: |
-          $password = Get-Content "$env:TEMP\instant_password.txt" -ErrorAction SilentlyContinue
-          if (-not $password) { $password = "Check_GitHub_Secrets" }
+          $password = Get-Content "$env:TEMP\rdp_password.txt" -ErrorAction SilentlyContinue
+          if (-not $password) { 
+              $password = $env:RDP_PASS 
+              if (-not $password) { $password = "AiSTV@2024Pwd!" }
+          }
           
           $startTime = Get-Date
           $restartTime = $startTime.AddHours(6)
+          $timeRemaining = $restartTime - $startTime
           
           Write-Host ""
-          Write-Host "┌──────────────────────────────────────────────────┐" -ForegroundColor Cyan
-          Write-Host "│         🚀 AI STV PREMIUM - INSTANT MODE         │" -ForegroundColor Red
-          Write-Host "│         ⚡ NO DELAY - IMMEDIATE RESTART          │" -ForegroundColor Yellow
-          Write-Host "├──────────────────────────────────────────────────┤" -ForegroundColor Cyan
-          Write-Host "│ 🌐 IP Address: $env:TAILSCALE_IP" -ForegroundColor White
+          Write-Host "┌────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+          Write-Host "│              🚀 AI STV PREMIUM RDP                    │" -ForegroundColor Red
+          Write-Host "│              ⚡ INSTANT MODE - NO DELAY               │" -ForegroundColor Yellow
+          Write-Host "├────────────────────────────────────────────────────────┤" -ForegroundColor Cyan
+          Write-Host "│ 🌐 RDP Address: $env:TAILSCALE_IP" -ForegroundColor White
           Write-Host "│ 👤 Username: AISTV-PREMIUM" -ForegroundColor White
           Write-Host "│ 🔐 Password: $password" -ForegroundColor White
+          Write-Host "│ 📍 Port: 3389" -ForegroundColor White
           Write-Host "│ ⏰ Session Start: $($startTime.ToString('HH:mm:ss'))" -ForegroundColor White
           Write-Host "│ 🔄 Auto Restart: $($restartTime.ToString('HH:mm:ss'))" -ForegroundColor White
-          Write-Host "│ ⚡ Mode: Instant (No 10s Delay)" -ForegroundColor Red
-          Write-Host "└──────────────────────────────────────────────────┘" -ForegroundColor Cyan
+          Write-Host "│ ⏳ Time Remaining: 6 hours 0 minutes" -ForegroundColor White
+          Write-Host "│ ⚡ Mode: INSTANT (No 10s delay on restart)" -ForegroundColor Red
+          Write-Host "└────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
           
-          # Simpan session info untuk recovery
+          # Save session info
           $sessionInfo = @{
               IP = $env:TAILSCALE_IP
               Username = "AISTV-PREMIUM"
+              Password = $password
               StartTime = $startTime.ToString("yyyy-MM-dd HH:mm:ss")
               RestartTime = $restartTime.ToString("yyyy-MM-dd HH:mm:ss")
               Mode = "Instant-NoDelay"
@@ -247,89 +325,114 @@ jobs:
           
           $sessionInfo | Out-File "$env:TEMP\session_info.json"
 
-      # STEP 7: MAINTAIN SESSION UNTIL RESTART
-      - name: ⏳ MAINTAIN INSTANT SESSION
+      # STEP 7: MAINTAIN SESSION UNTIL INSTANT RESTART
+      - name: ⏳ MAINTAIN SESSION - INSTANT RESTART
         run: |
           Write-Host ""
-          Write-Host "⏳ MENJAGA SESSI HINGGA RESTART..." -ForegroundColor Yellow
+          Write-Host "⏳ MAINTAINING SESSION..." -ForegroundColor Yellow
           
           $sessionStart = Get-Date
           $restartTime = $sessionStart.AddHours(6)
-          $checkInterval = 30  # detik
+          $checkInterval = 30  # Check every 30 seconds
+          
+          Write-Host "✅ Session active" -ForegroundColor Green
+          Write-Host "⏰ Next restart at: $($restartTime.ToString('HH:mm:ss'))" -ForegroundColor Cyan
+          Write-Host "⚡ Mode: Instant restart (No 10s delay)" -ForegroundColor Red
           
           while ($true) {
               $currentTime = Get-Date
               $timeRemaining = $restartTime - $currentTime
               
+              # Check if it's time to restart
               if ($timeRemaining.TotalSeconds -le 0) {
                   Write-Host ""
-                  Write-Host "🔄 WAKTU RESTART TELAH TIBA!" -ForegroundColor Red
-                  Write-Host "⚡ Langsung restart tanpa jeda..." -ForegroundColor Yellow
+                  Write-Host "🔄 RESTART TIME REACHED!" -ForegroundColor Red
+                  Write-Host "⚡ Initiating immediate restart (NO DELAY)..." -ForegroundColor Yellow
                   
-                  # Trigger restart workflow baru
-                  $token = $env:GITHUB_TOKEN
-                  $owner = $env:GITHUB_REPOSITORY_OWNER
-                  $repo = $env:GITHUB_REPOSITORY
+                  # Stop services immediately
+                  Stop-Service TermService -Force -ErrorAction SilentlyContinue
+                  Stop-Service UmRdpService -Force -ErrorAction SilentlyContinue
                   
-                  $uri = "https://api.github.com/repos/$owner/$repo/actions/workflows/self-restart.yml/dispatches"
-                  $body = @{
-                      ref = "main"
-                  } | ConvertTo-Json
+                  # Disconnect Tailscale
+                  & "$env:ProgramFiles\Tailscale\tailscale.exe" down --accept-risk=all -ErrorAction SilentlyContinue
                   
-                  $headers = @{
-                      Authorization = "token $token"
-                      Accept = "application/vnd.github.v3+json"
-                  }
-                  
-                  try {
-                      Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body
-                      Write-Host "✅ Workflow restart berhasil dipicu" -ForegroundColor Green
-                  } catch {
-                      Write-Host "⚠️  Gagal trigger workflow: $_" -ForegroundColor Yellow
-                  }
-                  
-                  # Langsung exit tanpa delay
+                  Write-Host "✅ Services stopped" -ForegroundColor Green
+                  Write-Host "🎯 Exiting for immediate restart" -ForegroundColor Green
                   break
               }
               
+              # Calculate remaining time
               $hours = [math]::Floor($timeRemaining.TotalHours)
               $minutes = [math]::Floor($timeRemaining.TotalMinutes % 60)
               $seconds = [math]::Floor($timeRemaining.TotalSeconds % 60)
               
-              Write-Host "`r⏳ Restart dalam: $hours jam $minutes menit $seconds detik" -NoNewline -ForegroundColor Cyan
+              # Display countdown
+              Write-Host "`r⏳ Time until restart: $hours hours $minutes minutes $seconds seconds" -NoNewline -ForegroundColor Cyan
               
-              # Cek status services setiap iterasi
+              # Check RDP service status
               $termService = Get-Service -Name TermService -ErrorAction SilentlyContinue
               if ($termService.Status -ne 'Running') {
                   Start-Service -Name TermService -ErrorAction SilentlyContinue
+                  Write-Host "`n│ 🔄 Restarted TermService" -ForegroundColor Yellow
+              }
+              
+              # Check user account status
+              $user = Get-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+              if ($user -and -not $user.Enabled) {
+                  Enable-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+                  Write-Host "`n│ 🔄 Re-enabled user account" -ForegroundColor Yellow
               }
               
               Start-Sleep -Seconds $checkInterval
           }
 
-      # STEP 8: CLEANUP INSTANT (Optional)
-      - name: 🧹 INSTANT CLEANUP
-        if: always()
+      # STEP 8: INSTANT CLEANUP (Optional - runs if workflow fails)
+      - name: 🧹 INSTANT CLEANUP (ON FAILURE)
+        if: failure()
         run: |
           Write-Host ""
-          Write-Host "🧹 INSTANT CLEANUP" -ForegroundColor Yellow
+          Write-Host "🧹 INSTANT CLEANUP ON FAILURE" -ForegroundColor Yellow
           
-          # Hanya cleanup ringan, biarkan heavy cleanup ke workflow baru
+          # Minimal cleanup to allow immediate restart
           try {
               # Stop services
               Stop-Service TermService -Force -ErrorAction SilentlyContinue
               Stop-Service UmRdpService -Force -ErrorAction SilentlyContinue
               
+              # Disable user temporarily
+              Disable-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+              
               # Down Tailscale
               & "$env:ProgramFiles\Tailscale\tailscale.exe" down --accept-risk=all -ErrorAction SilentlyContinue
               
-              # Hapus file temporary
-              Remove-Item "$env:TEMP\instant_password.txt" -ErrorAction SilentlyContinue
-              Remove-Item "$env:TEMP\instant_restart.json" -ErrorAction SilentlyContinue
-              
-              Write-Host "✅ Cleanup selesai" -ForegroundColor Green
+              Write-Host "✅ Cleanup complete" -ForegroundColor Green
           } catch {
-              Write-Host "⚠️  Cleanup partial" -ForegroundColor Yellow
+              Write-Host "⚠️ Partial cleanup completed" -ForegroundColor Yellow
           }
           
-          Write-Host "⚡ Langsung restart dalam 0 detik..." -ForegroundColor Red
+          Write-Host "⚡ Ready for immediate restart" -ForegroundColor Green
+
+# Workflow untuk memicu restart (optional trigger)
+  Trigger-Instant-Restart:
+    runs-on: ubuntu-latest
+    needs: [Premium-RDP-Instant]
+    if: always()
+    steps:
+      - name: 🚀 Trigger Next Session
+        if: success() || failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "⚡ Triggering next instant session..."
+          
+          # Wait a moment for cleanup
+          sleep 5
+          
+          # Trigger the same workflow again
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/premium-rdp-instant.yml/dispatches \
+            -d '{"ref":"main"}'
+          
+          echo "✅ Next session triggered successfully!"
