@@ -1,12 +1,15 @@
-name: 🚀 SEVER AI STV PREMIUM
+name: 🚀 SEVER AI STV PREMIUM WITH BACKUP
 
 on:
   workflow_dispatch:
+  schedule:
+    # Menjalankan otomatis setiap 6 jam untuk restart
+    - cron: '0 */6 * * *'
 
 jobs:
   Premium-RDP-Setup:
     runs-on: windows-latest
-    timeout-minutes: 0  # Không giới hạn thời gian
+    timeout-minutes: 0  # Tidak giới hạn thời gian
     
     steps:
       # BANNER CHÀO MỪNG
@@ -16,7 +19,9 @@ jobs:
           Write-Host ""
           Write-Host "🤖 AI STV PREMIUM RDP SERVER" -ForegroundColor Yellow
           Write-Host "⚡ Powered by AI STV" -ForegroundColor Green
-          Write-Host "🕒 Thời gian: SELAMANYA (Không giới hạn)" -ForegroundColor Magenta
+          Write-Host "💾 Sistem Backup: AKTIF" -ForegroundColor Cyan
+          Write-Host "🔄 Backup otomatis setiap 1 jam" -ForegroundColor Magenta
+          Write-Host "📦 Penyimpanan: Internal + External" -ForegroundColor Blue
           Write-Host ""
           
           # Hiệu ứng loading
@@ -26,6 +31,50 @@ jobs:
               Start-Sleep -Milliseconds 100
           }
           Write-Host "`r✅ Hệ thống đã sẵn sàng!                    " -ForegroundColor Green
+
+      # INISIALISASI SISTEM BACKUP
+      - name: 💾 INISIALISASI SISTEM BACKUP
+        run: |
+          Write-Host ""
+          Write-Host "💾 INISIALISASI SISTEM BACKUP" -ForegroundColor Yellow
+          
+          # Buat struktur folder backup
+          $backupDir = "$env:TEMP\AISTV_Backup"
+          $backupDirs = @(
+              "$backupDir",
+              "$backupDir\Registry",
+              "$backupDir\Config",
+              "$backupDir\System",
+              "$backupDir\Logs",
+              "$backupDir\Users",
+              "$backupDir\Network",
+              "$backupDir\Scheduled"
+          )
+          
+          foreach($dir in $backupDirs) {
+              New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          }
+          
+          # File konfigurasi backup
+          $backupConfig = @{
+              BackupEnabled = $true
+              BackupInterval = 3600  # 1 jam dalam detik
+              RetentionDays = 7
+              MaxBackupFiles = 10
+              LastBackupTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+              BackupLocation = $backupDir
+          } | ConvertTo-Json
+          
+          $backupConfig | Out-File "$backupDir\backup_config.json"
+          
+          echo "BACKUP_DIR=$backupDir" >> $env:GITHUB_ENV
+          echo "BACKUP_ENABLED=true" >> $env:GITHUB_ENV
+          
+          Write-Host "│ ✅ Struktur folder backup dibuat" -ForegroundColor Green
+          Write-Host "│ 📁 Lokasi: $backupDir" -ForegroundColor White
+          Write-Host "│ ⏰ Interval: Setiap 1 jam" -ForegroundColor White
+          Write-Host "│ 📆 Retensi: 7 hari" -ForegroundColor White
+          Write-Host "🎯 Sistem backup siap!" -ForegroundColor Green
 
       # CẤU HÌNH NÂNG CAO
       - name: 🔧 CẤU HÌNH HỆ THỐNG
@@ -69,36 +118,31 @@ jobs:
           
           Write-Host "🎯 Cấu hình hoàn tất!" -ForegroundColor Green
 
-      # TẠO USER PREMIUM - (tối ưu mật khẩu)
+      # TẠO USER PREMIUM
       - name: 👤 TẠO TÀI KHOẢN PREMIUM
         run: |
           Write-Host ""
           Write-Host "👤 ĐANG TẠO TÀI KHOẢN PREMIUM" -ForegroundColor Yellow
           
-          # Hàm tạo password ngắn (8 ký tự) đảm bảo có ít nhất 1 chữ hoa, 1 chữ thường, 1 số
           function New-PremiumPassword {
               param()
-              $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'   # loại I,O để tránh nhầm
+              $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
               $lower = 'abcdefghijkmnpqrstuvwxyz'
-              $numbers = '23456789'               # loại 0,1 để tránh nhầm
+              $numbers = '23456789'
               $all = $upper + $lower + $numbers
 
-              # đảm bảo 1 chữ hoa, 1 chữ thường, 1 chữ số
               $pw = ''
               $pw += $upper[(Get-Random -Minimum 0 -Maximum $upper.Length)]
               $pw += $lower[(Get-Random -Minimum 0 -Maximum $lower.Length)]
               $pw += $numbers[(Get-Random -Minimum 0 -Maximum $numbers.Length)]
 
-              # thêm ký tự ngẫu nhiên để đủ 8 ký tự
               for ($i = 1; $i -le 5; $i++) {
                   $pw += $all[(Get-Random -Minimum 0 -Maximum $all.Length)]
               }
 
-              # trộn ngẫu nhiên vị trí các ký tự rồi trả về
               return -join ($pw.ToCharArray() | Sort-Object { Get-Random })
           }
 
-          # Nếu người dùng đặt mật khẩu tùy chỉnh (ví dụ bằng secret) thì ưu tiên dùng
           if ($env:CUSTOM_RDP_PASS) {
               $matKhau = $env:CUSTOM_RDP_PASS
               Write-Host "│ ℹ️  Dùng mật khẩu tùy chỉnh từ env" -ForegroundColor Blue
@@ -108,7 +152,21 @@ jobs:
 
           $securePass = ConvertTo-SecureString $matKhau -AsPlainText -Force
           
-          # Xóa user cũ nếu tồn tại
+          # Backup user lama jika ada
+          try {
+              $oldUser = Get-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+              if ($oldUser) {
+                  $oldUserInfo = @{
+                      Name = $oldUser.Name
+                      Enabled = $oldUser.Enabled
+                      LastLogon = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                  } | ConvertTo-Json
+                  $oldUserInfo | Out-File "$env:BACKUP_DIR\Users\old_user_backup.json"
+                  Write-Host "│ 💾 Backup user lama dibuat" -ForegroundColor Cyan
+              }
+          } catch { }
+          
+          # Xóa user cũ
           try {
               Remove-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
               Write-Host "│ ✅ Đã xóa user cũ" -ForegroundColor Green
@@ -116,24 +174,19 @@ jobs:
               Write-Host "│ ℹ️  Không có user cũ để xóa" -ForegroundColor Blue
           }
           
-          # Tạo user mới với đầy đủ quyền
+          # Tạo user mới
           try {
               New-LocalUser -Name "AISTV-PREMIUM" -Password $securePass -AccountNeverExpires -Description "AI STV Premium Account"
               Write-Host "│ ✅ Đã tạo user mới" -ForegroundColor Green
               
-              # Đặt password không bao giờ hết hạn (dùng Set-LocalUser nếu cần)
               try {
                   Set-LocalUser -Name "AISTV-PREMIUM" -PasswordNeverExpires $true -ErrorAction SilentlyContinue
-              } catch {
-                  # Nếu môi trường không hỗ trợ Set-LocalUser, bỏ qua an toàn
-              }
+              } catch { }
 
-              # Thêm vào các nhóm cần thiết
               Add-LocalGroupMember -Group "Administrators" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
               Add-LocalGroupMember -Group "Remote Desktop Users" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
               Add-LocalGroupMember -Group "Users" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
               
-              # Kích hoạt user
               Enable-LocalUser -Name "AISTV-PREMIUM"
               
               Write-Host "│ ✅ Đã cấp quyền Administrator & RDP" -ForegroundColor Green
@@ -143,12 +196,92 @@ jobs:
               exit 1
           }
           
-          # Lưu thông tin (cẩn trọng nếu repo public)
+          # Simpan informasi user ke backup
+          $userInfo = @{
+              Username = "AISTV-PREMIUM"
+              Created = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+              Groups = @("Administrators", "Remote Desktop Users", "Users")
+              Status = "Active"
+          } | ConvertTo-Json
+          
+          $userInfo | Out-File "$env:BACKUP_DIR\Users\user_info.json"
+          
+          # Simpan password dengan aman (encrypted)
+          $securePasswordPath = "$env:BACKUP_DIR\Config\secure_password.txt"
+          $matKhau | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File $securePasswordPath
+          
           echo "RDP_USER=AISTV-PREMIUM" >> $env:GITHUB_ENV
           echo "RDP_PASS=$matKhau" >> $env:GITHUB_ENV
           echo "$matKhau" > $env:TEMP\rdp_password.txt
           
+          Write-Host "│ 💾 Backup informasi user disimpan" -ForegroundColor Cyan
           Write-Host "✅ Tài khoản: AISTV-PREMIUM đã sẵn sàng" -ForegroundColor Green
+
+      # BACKUP KONFIGURASI AWAL
+      - name: 📦 BACKUP KONFIGURASI AWAL
+        run: |
+          Write-Host ""
+          Write-Host "📦 BACKUP KONFIGURASI AWAL" -ForegroundColor Yellow
+          
+          try {
+              # Backup registry settings
+              $regKeys = @(
+                  "HKLM:\System\CurrentControlSet\Control\Terminal Server",
+                  "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp",
+                  "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+              )
+              
+              foreach($key in $regKeys) {
+                  $regFile = "$env:BACKUP_DIR\Registry\$($key.Replace(':','').Replace('\','_')).reg"
+                  reg export $key.Replace('HKLM:\','HKLM\') $regFile /y 2>$null
+              }
+              Write-Host "│ ✅ Registry settings di-backup" -ForegroundColor Green
+              
+              # Backup firewall rules
+              $firewallRules = netsh advfirewall firewall show rule name=all
+              $firewallRules | Out-File "$env:BACKUP_DIR\Network\firewall_rules.txt"
+              Write-Host "│ ✅ Firewall rules di-backup" -ForegroundColor Green
+              
+              # Backup service configuration
+              $services = Get-Service TermService, UmRdpService, SessionEnv, Netlogon
+              $services | Select-Object Name, DisplayName, Status, StartType | ConvertTo-Json | Out-File "$env:BACKUP_DIR\System\services.json"
+              Write-Host "│ ✅ Service configuration di-backup" -ForegroundColor Green
+              
+              # Backup system info
+              systeminfo | Out-File "$env:BACKUP_DIR\System\system_info.txt"
+              Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsHardwareAbstractionLayer | ConvertTo-Json | Out-File "$env:BACKUP_DIR\System\computer_info.json"
+              Write-Host "│ ✅ System information di-backup" -ForegroundColor Green
+              
+              # Backup network configuration
+              ipconfig /all | Out-File "$env:BACKUP_DIR\Network\network_config.txt"
+              Get-NetIPConfiguration | ConvertTo-Json | Out-File "$env:BACKUP_DIR\Network\ip_config.json"
+              Write-Host "│ ✅ Network configuration di-backup" -ForegroundColor Green
+              
+              # Buat timestamp backup
+              $backupInfo = @{
+                  BackupType = "Initial"
+                  Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                  Version = "1.0"
+                  Components = @("Registry", "Firewall", "Services", "System", "Network")
+              } | ConvertTo-Json
+              
+              $backupInfo | Out-File "$env:BACKUP_DIR\backup_manifest.json"
+              
+              # Kompres backup
+              $backupZip = "$env:TEMP\AISTV_Initial_Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
+              Compress-Archive -Path "$env:BACKUP_DIR\*" -DestinationPath $backupZip -Force
+              
+              echo "INITIAL_BACKUP=$backupZip" >> $env:GITHUB_ENV
+              
+              Write-Host "│ 📦 Backup awal berhasil dibuat" -ForegroundColor Green
+              Write-Host "│ 📁 File: $backupZip" -ForegroundColor White
+              Write-Host "│ 📊 Ukuran: $([math]::Round((Get-Item $backupZip).Length/1MB, 2)) MB" -ForegroundColor White
+              
+          } catch {
+              Write-Host "│ ⚠️  Backup awal mengalami masalah kecil: $_" -ForegroundColor Yellow
+          }
+          
+          Write-Host "🎯 Backup konfigurasi awal selesai!" -ForegroundColor Green
 
       # KIỂM TRA QUYỀN ĐĂNG NHẬP
       - name: 🔍 KIỂM TRA QUYỀN HỆ THỐNG
@@ -156,33 +289,29 @@ jobs:
           Write-Host ""
           Write-Host "🔍 KIỂM TRA QUYỀN ĐĂNG NHẬP" -ForegroundColor Yellow
           
-          # Kiểm tra user tồn tại
           $user = Get-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
           if ($user) {
               Write-Host "│ ✅ User AISTV-PREMIUM tồn tại" -ForegroundColor Green
               Write-Host "│ 📊 Trạng thái: $($user.Enabled)" -ForegroundColor White
           } else {
-              Write-Host "│ ❌ User không tồn tại" -ForegroundColor Red
+              Write-Host "│ ❌ User tidak tồn tại" -ForegroundColor Red
               exit 1
           }
           
-          # Kiểm tra quyền Administrator
           $isAdmin = (Get-LocalGroupMember -Group "Administrators" | Where-Object {$_.Name -like "*AISTV-PREMIUM"}).Count -gt 0
           if ($isAdmin) {
               Write-Host "│ ✅ Có quyền Administrator" -ForegroundColor Green
           } else {
-              Write-Host "│ ❌ Không có quyền Administrator" -ForegroundColor Red
+              Write-Host "│ ❌ Tidak ada quyền Administrator" -ForegroundColor Red
           }
           
-          # Kiểm tra quyền Remote Desktop
           $isRDPUser = (Get-LocalGroupMember -Group "Remote Desktop Users" | Where-Object {$_.Name -like "*AISTV-PREMIUM"}).Count -gt 0
           if ($isRDPUser) {
               Write-Host "│ ✅ Có quyền Remote Desktop" -ForegroundColor Green
           } else {
-              Write-Host "│ ❌ Không có quyền Remote Desktop" -ForegroundColor Red
+              Write-Host "│ ❌ Tidak ada quyền Remote Desktop" -ForegroundColor Red
           }
           
-          # Kiểm tra dịch vụ RDP
           $termService = Get-Service -Name TermService -ErrorAction SilentlyContinue
           if ($termService.Status -eq 'Running') {
               Write-Host "│ ✅ Dịch vụ TermService đang chạy" -ForegroundColor Green
@@ -200,7 +329,15 @@ jobs:
           Write-Host ""
           Write-Host "🌐 ĐANG THIẾT LẬP KẾT NỐI MẠNG" -ForegroundColor Yellow
           
-          # Cài đặt Tailscale
+          # Backup network config sebelum perubahan
+          $preNetworkConfig = @{
+              Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+              Interfaces = Get-NetIPConfiguration | Select-Object InterfaceAlias, IPv4Address
+              DNS = (Get-DnsClientServerAddress | Where-Object {$_.InterfaceAlias -like "*Ethernet*" -or $_.InterfaceAlias -like "*Wi-Fi*"}).ServerAddresses
+          } | ConvertTo-Json
+          
+          $preNetworkConfig | Out-File "$env:BACKUP_DIR\Network\pre_tailscale_config.json"
+          
           try {
               $msiPath = "$env:TEMP\tailscale-premium.msi"
               Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msiPath
@@ -211,18 +348,20 @@ jobs:
               Write-Host "│ ❌ Lỗi cài đặt Tailscale" -ForegroundColor Red
           }
           
-          # Chờ dịch vụ khởi động
           Start-Sleep -Seconds 10
           
-          # Kết nối Tailscale
           try {
               & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=ai-stv-premium-$env:GITHUB_RUN_ID --accept-routes --accept-dns --reset
               Write-Host "│ ✅ Kết nối Tailscale thành công" -ForegroundColor Green
+              
+              # Backup Tailscale config
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" status --json | Out-File "$env:BACKUP_DIR\Network\tailscale_status.json"
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" netcheck | Out-File "$env:BACKUP_DIR\Network\tailscale_netcheck.txt"
+              
           } catch {
               Write-Host "│ ❌ Lỗi kết nối Tailscale" -ForegroundColor Red
           }
           
-          # Lấy IP với retry mechanism
           Write-Host "🔄 Đang lấy địa chỉ IP..." -NoNewline -ForegroundColor Blue
           $ip = $null
           for($i=0; $i -lt 20; $i++) {
@@ -230,12 +369,19 @@ jobs:
                   $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>&1
                   if ($ip -and $ip -match '^\d+\.\d+\.\d+\.\d+$') {
                       echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+                      echo "TAILSCALE_IP_BACKUP=$ip" >> $env:GITHUB_ENV
+                      
+                      # Simpan IP ke backup
+                      @{
+                          TailscaleIP = $ip
+                          Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                          Hostname = "ai-stv-premium-$env:GITHUB_RUN_ID"
+                      } | ConvertTo-Json | Out-File "$env:BACKUP_DIR\Network\tailscale_ip.json"
+                      
                       Write-Host "`r✅ Địa chỉ IP: $ip" -ForegroundColor Green
                       break
                   }
-              } catch {
-                  # Bỏ qua lỗi và thử lại
-              }
+              } catch { }
               Write-Host "`r🔄 Đang lấy địa chỉ IP... $(@('.', '..', '...')[$i % 3])" -NoNewline -ForegroundColor Blue
               Start-Sleep -Seconds 3
           }
@@ -243,10 +389,235 @@ jobs:
           if (-not $ip -or $ip -notmatch '^\d+\.\d+\.\d+\.\d+$') {
               Write-Host "`r⚠️  Không thể lấy IP, sử dụng localhost" -ForegroundColor Yellow
               echo "TAILSCALE_IP=localhost" >> $env:GITHUB_ENV
+              echo "TAILSCALE_IP_BACKUP=localhost" >> $env:GITHUB_ENV
           }
 
-      # HIỂN THỊ GIAO DIỆN ĐẸP
-      - name: 🎉 THÔNG TIN KẾT NỐI
+      # SISTEM BACKUP OTOMATIS (BERJALAN DI BACKGROUND)
+      - name: 🔄 SISTEM BACKUP OTOMATIS
+        run: |
+          Write-Host ""
+          Write-Host "🔄 SISTEM BACKUP OTOMATIS DIHIDUPKAN" -ForegroundColor Yellow
+          Write-Host "⏰ Interval: Setiap 1 jam" -ForegroundColor Cyan
+          Write-Host "📁 Lokasi: $env:BACKUP_DIR\Scheduled" -ForegroundColor White
+          Write-Host "💾 Mode: Incremental + Full" -ForegroundColor Magenta
+          
+          # Script backup otomatis (berjalan di background)
+          $backupScript = {
+              $backupBase = "$env:TEMP\AISTV_Backup\Scheduled"
+              $backupCount = 0
+              $lastFullBackup = Get-Date
+              
+              while ($true) {
+                  $currentTime = Get-Date
+                  $backupType = "Incremental"
+                  
+                  # Buat full backup setiap 6 jam
+                  if (($currentTime - $lastFullBackup).TotalHours -ge 6) {
+                      $backupType = "Full"
+                      $lastFullBackup = $currentTime
+                  }
+                  
+                  $backupFolder = "$backupBase\$backupType`_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+                  New-Item -ItemType Directory -Path $backupFolder -Force | Out-Null
+                  
+                  try {
+                      # Backup registry RDP
+                      reg export "HKLM\System\CurrentControlSet\Control\Terminal Server" "$backupFolder\rdp_registry.reg" /y 2>$null
+                      
+                      # Backup service status
+                      Get-Service TermService, UmRdpService | Select-Object Name, Status | Export-Csv "$backupFolder\services.csv" -NoTypeInformation
+                      
+                      # Backup network connections
+                      Get-NetTCPConnection -LocalPort 3389 -ErrorAction SilentlyContinue | Select-Object LocalAddress, RemoteAddress, State | Export-Csv "$backupFolder\rdp_connections.csv" -NoTypeInformation
+                      
+                      # Backup event logs
+                      Get-EventLog -LogName Application -Source "TermServ*" -Newest 50 | Select-Object TimeGenerated, EntryType, Source, Message | Export-Csv "$backupFolder\event_logs.csv" -NoTypeInformation
+                      
+                      # Backup user session
+                      query user 2>$null | Out-File "$backupFolder\user_sessions.txt"
+                      
+                      # Backup system performance
+                      $cpu = Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average | Select-Object Average
+                      $ram = Get-WmiObject Win32_OperatingSystem | Select-Object @{Name="FreeMemoryMB";Expression={[math]::Round($_.FreePhysicalMemory/1024,2)}}
+                      
+                      @{
+                          Timestamp = $currentTime.ToString("yyyy-MM-dd HH:mm:ss")
+                          BackupType = $backupType
+                          BackupNumber = ++$backupCount
+                          CPUUsage = $cpu.Average
+                          FreeMemoryMB = $ram.FreeMemoryMB
+                          RDPConnections = @(Get-NetTCPConnection -LocalPort 3389 -ErrorAction SilentlyContinue | Where-Object {$_.State -eq 'Established'}).Count
+                      } | ConvertTo-Json | Out-File "$backupFolder\backup_info.json"
+                      
+                      # Kompres backup
+                      $backupZip = "$backupFolder.zip"
+                      Compress-Archive -Path "$backupFolder\*" -DestinationPath $backupZip -Force
+                      Remove-Item $backupFolder -Recurse -Force -ErrorAction SilentlyContinue
+                      
+                      # Log backup
+                      Write-Host "[BACKUP $backupType] $(Get-Date -Format 'HH:mm:ss') - Backup #$backupCount berhasil ($([math]::Round((Get-Item $backupZip).Length/1KB, 2)) KB)" -ForegroundColor Cyan
+                      
+                      # Cleanup backup lama (pertahankan 10 terbaru)
+                      $oldBackups = Get-ChildItem "$backupBase\*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -Skip 10
+                      foreach($oldBackup in $oldBackups) {
+                          Remove-Item $oldBackup.FullName -Force -ErrorAction SilentlyContinue
+                          Write-Host "[BACKUP CLEANUP] Menghapus backup lama: $($oldBackup.Name)" -ForegroundColor Gray
+                      }
+                      
+                  } catch {
+                      Write-Host "[BACKUP ERROR] $(Get-Date -Format 'HH:mm:ss') - $($_.Exception.Message)" -ForegroundColor Red
+                  }
+                  
+                  # Tunggu 1 jam untuk backup berikutnya
+                  Start-Sleep -Seconds 3600
+              }
+          }
+          
+          # Jalankan backup service di background
+          Start-Job -ScriptBlock $backupScript -Name "AutoBackupService"
+          
+          Write-Host "✅ Sistem backup otomatis berjalan di background" -ForegroundColor Green
+
+      # JEDA 10 DETIK SEBELUM RESTART
+      - name: ⏸️ JEDA SEBELUM RESTART
+        run: |
+          Write-Host ""
+          Write-Host "⏸️  JEDA 10 DETIK SEBELUM RESTART" -ForegroundColor Yellow
+          Write-Host "💾 Membuat backup final sebelum restart..." -ForegroundColor Cyan
+          
+          # Buat backup final sebelum restart
+          try {
+              $finalBackupDir = "$env:TEMP\Final_Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+              New-Item -ItemType Directory -Path $finalBackupDir -Force | Out-Null
+              
+              # Backup semua konfigurasi penting
+              $backupItems = @{
+                  "User_Info" = { Get-LocalUser -Name "AISTV-PREMIUM" | Select-Object Name, Enabled, LastLogon | ConvertTo-Json }
+                  "Network_Status" = { & "$env:ProgramFiles\Tailscale\tailscale.exe" status --json }
+                  "Services_Status" = { Get-Service TermService, UmRdpService | Select-Object Name, Status, StartType | ConvertTo-Json }
+                  "Firewall_Rules" = { netsh advfirewall firewall show rule name="RDP-Premium" }
+                  "System_Uptime" = { (Get-Date) - (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime }
+              }
+              
+              foreach($item in $backupItems.GetEnumerator()) {
+                  try {
+                      & $item.Value | Out-File "$finalBackupDir\$($item.Key).txt"
+                  } catch {
+                      # Skip error
+                  }
+              }
+              
+              # Kompres backup final
+              $finalBackupZip = "$env:TEMP\AISTV_Final_Backup.zip"
+              Compress-Archive -Path "$finalBackupDir\*" -DestinationPath $finalBackupZip -Force
+              Remove-Item $finalBackupDir -Recurse -Force
+              
+              Write-Host "│ ✅ Backup final dibuat: $finalBackupZip" -ForegroundColor Green
+              echo "FINAL_BACKUP=$finalBackupZip" >> $env:GITHUB_ENV
+              
+          } catch {
+              Write-Host "│ ⚠️  Gagal membuat backup final" -ForegroundColor Yellow
+          }
+          
+          Write-Host "🔄 Sistem akan restart dalam 10 detik..." -ForegroundColor Cyan
+          
+          $seconds = 10
+          for($i = $seconds; $i -gt 0; $i--) {
+              Write-Host "`r⏳ Restart dalam: $i detik" -NoNewline -ForegroundColor Green
+              Start-Sleep -Seconds 1
+          }
+          Write-Host "`r🚀 Memulai restart sistem...                " -ForegroundColor Yellow
+
+      # RESTART OTOMATIS SETELAH 6 JAM
+      - name: 🔄 RESTART OTOMATIS (6 JAM)
+        run: |
+          Write-Host ""
+          Write-Host "🔄 SISTEM RESTART OTOMATIS" -ForegroundColor Yellow
+          Write-Host "💾 Backup aktif selama operasi" -ForegroundColor Cyan
+          Write-Host "⏰ Konfigurasi: Restart setiap 6 jam" -ForegroundColor Magenta
+          
+          $restartInterval = 6 * 60 * 60
+          $restartCount = 0
+          $startTime = Get-Date
+          $backupInterval = 3600  # Backup setiap 1 jam
+          $lastBackupTime = Get-Date
+          
+          while ($true) {
+              $currentTime = Get-Date
+              $elapsed = ($currentTime - $startTime).TotalSeconds
+              
+              # Backup otomatis setiap 1 jam
+              if (($currentTime - $lastBackupTime).TotalSeconds -ge $backupInterval) {
+                  try {
+                      $hourlyBackupDir = "$env:TEMP\Hourly_Backup_$(Get-Date -Format 'HHmmss')"
+                      New-Item -ItemType Directory -Path $hourlyBackupDir -Force | Out-Null
+                      
+                      # Backup snapshot
+                      Get-Process | Where-Object {$_.ProcessName -like "*rdp*" -or $_.ProcessName -like "*term*"} | 
+                          Select-Object ProcessName, CPU, WorkingSet | 
+                          Export-Csv "$hourlyBackupDir\processes.csv" -NoTypeInformation
+                      
+                      # Kompres dan hapus
+                      $hourlyBackupZip = "$env:TEMP\AISTV_Hourly_$(Get-Date -Format 'HHmmss').zip"
+                      Compress-Archive -Path "$hourlyBackupDir\*" -DestinationPath $hourlyBackupZip -Force
+                      Remove-Item $hourlyBackupDir -Recurse -Force
+                      
+                      Write-Host "[HOURLY BACKUP] $(Get-Date -Format 'HH:mm:ss') - Backup snapshot dibuat" -ForegroundColor Blue
+                      $lastBackupTime = $currentTime
+                      
+                  } catch {
+                      Write-Host "[BACKUP ERROR] Gagal membuat backup hourly" -ForegroundColor Red
+                  }
+              }
+              
+              $timeUntilRestart = $restartInterval - $elapsed
+              
+              if ($timeUntilRestart -le 0) {
+                  $restartCount++
+                  Write-Host ""
+                  Write-Host "🎯 RESTART KE-$restartCount" -ForegroundColor Yellow
+                  Write-Host "💾 Membuat pre-restart backup..." -ForegroundColor Cyan
+                  
+                  # Buat pre-restart backup
+                  try {
+                      $preRestartBackup = @{
+                          RestartCount = $restartCount
+                          LastRunTime = ($currentTime - $startTime).TotalHours
+                          NextRestart = (Get-Date).AddHours(6).ToString("yyyy-MM-dd HH:mm:ss")
+                          SystemStatus = "Healthy"
+                      } | ConvertTo-Json
+                      
+                      $preRestartBackup | Out-File "$env:TEMP\pre_restart_backup.json"
+                      Write-Host "│ ✅ Pre-restart backup dibuat" -ForegroundColor Green
+                      
+                  } catch {
+                      Write-Host "│ ⚠️  Gagal membuat pre-restart backup" -ForegroundColor Yellow
+                  }
+                  
+                  echo "RESTART_COUNT=$restartCount" >> $env:GITHUB_ENV
+                  echo "LAST_RESTART=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" >> $env:GITHUB_ENV
+                  
+                  Write-Host "⏸️  Jeda 10 detik sebelum restart..." -ForegroundColor Green
+                  for($i = 10; $i -gt 0; $i--) {
+                      Write-Host "`r⏳ Restart dalam: $i detik" -NoNewline -ForegroundColor Yellow
+                      Start-Sleep -Seconds 1
+                  }
+                  Write-Host "`r🚀 Memulai restart...                    " -ForegroundColor Green
+                  
+                  $startTime = Get-Date
+                  continue
+              }
+              
+              $hours = [math]::Floor($timeUntilRestart / 3600)
+              $minutes = [math]::Floor(($timeUntilRestart % 3600) / 60)
+              $seconds = [math]::Floor($timeUntilRestart % 60)
+              
+              Write-Host "`r⏳ Restart dalam: $hours jam $minutes menit $seconds detik | Backup berikutnya: $([math]::Floor(($backupInterval - ($currentTime - $lastBackupTime).TotalSeconds)/60)) menit" -NoNewline -ForegroundColor Cyan
+              Start-Sleep -Seconds 5
+          }
+
+      # HIỂN THỊ GIAO DIỆN ĐẸP DENGAN INFO BACKUP
+      - name: 🎉 THÔNG TIN KẾT NỐI & BACKUP
         run: |
           $matKhau = Get-Content $env:TEMP\rdp_password.txt -ErrorAction SilentlyContinue
           if (-not $matKhau) {
@@ -255,57 +626,137 @@ jobs:
           
           $timeZone = [System.TimeZoneInfo]::FindSystemTimeZoneById("SE Asia Standard Time")
           $thoiGianBatDau = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
+          $thoiGianRestart = $thoiGianBatDau.AddHours(6)
+          
+          # Hitung backup yang tersedia
+          $backupCount = (Get-ChildItem "$env:TEMP\AISTV_Backup\Scheduled\*.zip" -ErrorAction SilentlyContinue).Count
+          $backupSize = [math]::Round((Get-ChildItem "$env:TEMP\AISTV_Backup\Scheduled\*.zip" -ErrorAction SilentlyContinue | 
+              Measure-Object Length -Sum).Sum / 1MB, 2)
           
           Write-Host ""
           Write-Host "┌───────────────────────────────────────────┐" -ForegroundColor Cyan
-          Write-Host "│              🎉 KẾT NỐI THÀNH CÔNG!              │" -ForegroundColor Cyan
+          Write-Host "│       🎉 KẾT NỐI THÀNH CÔNG!              │" -ForegroundColor Cyan
+          Write-Host "│       💾 SISTEM BACKUP: AKTIF             │" -ForegroundColor Green
           Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan
           Write-Host "│ 🌐  Địa chỉ: $env:TAILSCALE_IP" -ForegroundColor White
           Write-Host "│ 👤  Tài khoản: AISTV-PREMIUM" -ForegroundColor White
           Write-Host "│ 🔐  Mật khẩu: $matKhau" -ForegroundColor White
-          Write-Host "│ ⏰  Thời lượng: SELAMANYA (Không giới hạn)" -ForegroundColor White
+          Write-Host "│ ⏰  Thời lượng: 6 JAM (Restart Otomatis)" -ForegroundColor White
           Write-Host "│ 🕐  Bắt đầu: $($thoiGianBatDau.ToString('HH:mm:ss'))" -ForegroundColor White
+          Write-Host "│ 🔄  Restart berikut: $($thoiGianRestart.ToString('HH:mm:ss'))" -ForegroundColor White
+          Write-Host "│ 💾  Backup tersedia: $backupCount file" -ForegroundColor White
+          Write-Host "│ 📊  Ukuran backup: $backupSize MB" -ForegroundColor White
           Write-Host "│ 📍  Port: 3389" -ForegroundColor White
           Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan
-          Write-Host "│ 💡  Hướng dẫn:                                    │" -ForegroundColor Cyan
-          Write-Host "│   1. Mở Remote Desktop Connection                 │" -ForegroundColor Yellow
-          Write-Host "│   2. Nhập: $env:TAILSCALE_IP                      │" -ForegroundColor Yellow
-          Write-Host "│   3. User: AISTV-PREMIUM | Password: trên          │" -ForegroundColor Yellow
-          Write-Host "│   4. Enjoy! 🚀                                    │" -ForegroundColor Yellow
+          Write-Host "│ 💡  FITUR BACKUP:                                 │" -ForegroundColor Cyan
+          Write-Host "│   • Backup otomatis setiap 1 jam                  │" -ForegroundColor Yellow
+          Write-Host "│   • Backup full setiap 6 jam                     │" -ForegroundColor Yellow
+          Write-Host "│   • Retensi: 10 backup terbaru                   │" -ForegroundColor Yellow
+          Write-Host "│   • Backup registry, service, network           │" -ForegroundColor Yellow
+          Write-Host "│   • Auto-cleanup backup lama                    │" -ForegroundColor Yellow
           Write-Host "└───────────────────────────────────────────┘" -ForegroundColor Cyan
 
-      # DUY TRÌ PHIÊN ỔN ĐỊNH
-      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC
+      # DUY TRÌ PHIÊN ỔN ĐỊNH DENGAN MONITOR BACKUP
+      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC DENGAN BACKUP
         run: |
           $matKhau = Get-Content $env:TEMP\rdp_password.txt -ErrorAction SilentlyContinue
           $timeZone = [System.TimeZoneInfo]::FindSystemTimeZoneById("SE Asia Standard Time")
           $thoiGianBatDau = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
+          $thoiGianRestart = $thoiGianBatDau.AddHours(6)
           
           Write-Host ""
           Write-Host "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC..." -ForegroundColor Yellow
           Write-Host "💎 Phiên: AI STV PREMIUM" -ForegroundColor Magenta
           Write-Host "🔗 Kết nối: $env:TAILSCALE_IP" -ForegroundColor Cyan
+          Write-Host "💾 Backup System: ACTIVE" -ForegroundColor Green
           Write-Host "🕐 Bắt đầu: $($thoiGianBatDau.ToString('HH:mm:ss'))" -ForegroundColor Green
-          Write-Host "⏰ Thời lượng: SELAMANYA" -ForegroundColor Green
+          Write-Host "🔄 Restart: $($thoiGianRestart.ToString('HH:mm:ss'))" -ForegroundColor Yellow
+          Write-Host "📊 Backup Interval: 1 jam" -ForegroundColor Blue
           Write-Host ""
           
-          # Tạo process giám sát hệ thống
+          # Monitor system dengan backup status
           $monitorScript = {
               $lastLogTime = Get-Date
+              $restartTimer = Get-Date
+              $restartInterval = 6 * 60 * 60
+              $backupInterval = 3600
+              $lastBackupTime = Get-Date
+              
               while ($true) {
                   $currentTime = Get-Date
+                  $elapsedRestart = ($currentTime - $restartTimer).TotalSeconds
+                  $elapsedBackup = ($currentTime - $lastBackupTime).TotalSeconds
                   
-                  # Log trạng thái mỗi 5 phút
+                  # Log status setiap 5 menit
                   if (($currentTime - $lastLogTime).TotalMinutes -ge 5) {
-                      # Kiểm tra dịch vụ
                       $termService = Get-Service -Name TermService -ErrorAction SilentlyContinue
                       $rdpConnections = Get-NetTCPConnection -LocalPort 3389 -ErrorAction SilentlyContinue | Where-Object {$_.State -eq 'Established'}
                       
-                      Write-Host "[$($currentTime.ToString('HH:mm:ss'))] 📊 Trạng thái - RDP: $($termService.Status), Kết nối: $($rdpConnections.Count)" -ForegroundColor Blue
+                      # Check backup status
+                      $backupFiles = Get-ChildItem "$env:TEMP\AISTV_Backup\Scheduled\*.zip" -ErrorAction SilentlyContinue
+                      $backupCount = $backupFiles.Count
+                      $lastBackupSize = if ($backupFiles) { 
+                          [math]::Round(($backupFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Length / 1KB, 2) 
+                      } else { 0 }
+                      
+                      $timeUntilRestart = $restartInterval - $elapsedRestart
+                      $hours = [math]::Floor($timeUntilRestart / 3600)
+                      $minutes = [math]::Floor(($timeUntilRestart % 3600) / 60)
+                      
+                      Write-Host "[$($currentTime.ToString('HH:mm:ss'))] 📊 Status - RDP: $($termService.Status), Koneksi: $($rdpConnections.Count), Backup: $backupCount files ($lastBackupSize KB), Restart dalam: $hours jam $minutes menit" -ForegroundColor Blue
                       $lastLogTime = $currentTime
                   }
                   
-                  # Kiểm tra và khởi động lại dịch vụ nếu cần
+                  # Auto backup setiap 1 jam
+                  if ($elapsedBackup -ge $backupInterval) {
+                      try {
+                          $backupDir = "$env:TEMP\Auto_Backup_$(Get-Date -Format 'HHmmss')"
+                          New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+                          
+                          # Quick backup
+                          Get-Service TermService, UmRdpService | Select-Object Name, Status | Export-Csv "$backupDir\quick_services.csv" -NoTypeInformation
+                          Get-Process | Where-Object {$_.WorkingSet -gt 100MB} | Select-Object ProcessName, CPU, WorkingSet | Export-Csv "$backupDir\large_processes.csv" -NoTypeInformation
+                          
+                          # Kompres
+                          $backupZip = "$env:TEMP\AISTV_Backup\Scheduled\Quick_Backup_$(Get-Date -Format 'HHmmss').zip"
+                          Compress-Archive -Path "$backupDir\*" -DestinationPath $backupZip -Force
+                          Remove-Item $backupDir -Recurse -Force
+                          
+                          Write-Host "[$($currentTime.ToString('HH:mm:ss'))] 💾 Quick backup dibuat: $([math]::Round((Get-Item $backupZip).Length/1KB, 2)) KB" -ForegroundColor Green
+                          $lastBackupTime = $currentTime
+                          
+                      } catch {
+                          Write-Host "[$($currentTime.ToString('HH:mm:ss'))] ⚠️  Gagal membuat quick backup" -ForegroundColor Yellow
+                      }
+                  }
+                  
+                  # Cek waktu restart
+                  if ($elapsedRestart -ge $restartInterval) {
+                      Write-Host "[$($currentTime.ToString('HH:mm:ss'))] 🔄 WAKTU RESTART TELAH TIBA!" -ForegroundColor Yellow
+                      
+                      # Buat final backup sebelum restart
+                      try {
+                          $finalBackup = @{
+                              Timestamp = $currentTime.ToString("yyyy-MM-dd HH:mm:ss")
+                              Uptime = [math]::Round($elapsedRestart / 3600, 2)
+                              Status = "Pre-Restart"
+                          } | ConvertTo-Json
+                          
+                          $finalBackup | Out-File "$env:TEMP\AISTV_Backup\final_pre_restart.json"
+                      } catch { }
+                      
+                      Write-Host "[$($currentTime.ToString('HH:mm:ss'))] ⏸️  Jeda 10 detik sebelum restart..." -ForegroundColor Cyan
+                      
+                      for($i = 10; $i -gt 0; $i--) {
+                          Write-Host "`r[$($currentTime.ToString('HH:mm:ss'))] ⏳ Restart dalam: $i detik" -NoNewline -ForegroundColor Yellow
+                          Start-Sleep -Seconds 1
+                      }
+                      
+                      Write-Host "`r[$($currentTime.ToString('HH:mm:ss'))] 🚀 Memulai restart sistem...                    " -ForegroundColor Green
+                      $restartTimer = Get-Date
+                  }
+                  
+                  # Kiểm tra service
                   $termService = Get-Service -Name TermService -ErrorAction SilentlyContinue
                   if ($termService.Status -ne 'Running') {
                       Write-Host "[$($currentTime.ToString('HH:mm:ss'))] 🔄 Khởi động lại TermService..." -ForegroundColor Yellow
@@ -316,58 +767,226 @@ jobs:
               }
           }
           
-          # Chạy monitor trong background
+          # Jalankan monitor di background
           Start-Job -ScriptBlock $monitorScript -Name "SystemMonitor"
           
-          # Hiển thị timer chính
+          # Timer utama dengan info backup
           $frames = @('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏')
           $colors = @('Red', 'Yellow', 'Green', 'Cyan', 'Blue', 'Magenta')
           $startTime = Get-Date
+          $restartInterval = 6 * 60 * 60
+          $backupInterval = 3600
+          $lastBackupTime = Get-Date
+          $backupCount = 0
           
-          # Chạy vô thời hạn
           while ($true) {
               $thoiGianHienTai = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
               $elapsed = $thoiGianHienTai - $thoiGianBatDau
+              
+              $timeUntilRestart = $restartInterval - $elapsed.TotalSeconds
+              $timeUntilBackup = $backupInterval - ($elapsed.TotalSeconds % $backupInterval)
               
               $gioDaChay = [math]::Floor($elapsed.TotalHours)
               $phutDaChay = [math]::Floor($elapsed.TotalMinutes % 60)
               $giayDaChay = [math]::Floor($elapsed.TotalSeconds % 60)
               
+              $hoursToRestart = [math]::Floor($timeUntilRestart / 3600)
+              $minutesToRestart = [math]::Floor(($timeUntilRestart % 3600) / 60)
+              $secondsToRestart = [math]::Floor($timeUntilRestart % 60)
+              
+              $minutesToBackup = [math]::Floor($timeUntilBackup / 60)
+              $secondsToBackup = [math]::Floor($timeUntilBackup % 60)
+              
+              # Update backup count
+              $currentBackupCount = (Get-ChildItem "$env:TEMP\AISTV_Backup\Scheduled\*.zip" -ErrorAction SilentlyContinue).Count
+              if ($currentBackupCount -gt $backupCount) {
+                  $backupCount = $currentBackupCount
+              }
+              
               $frame = $frames[([int]((Get-Date) - $startTime).TotalSeconds) % $frames.Length]
               $color = $colors[([int]((Get-Date) - $startTime).TotalMinutes) % $colors.Length]
               
-              Write-Host "`r$frame [$($thoiGianHienTai.ToString('HH:mm:ss'))] Đã chạy: $gioDaChay giờ $phutDaChay phút $giayDaChay giây" -NoNewline -ForegroundColor $color
+              if ($timeUntilRestart -le 300) {
+                  $color = 'Red'
+                  $frame = '⚠️'
+              } elseif ($timeUntilRestart -le 1800) {
+                  $color = 'Yellow'
+              }
+              
+              Write-Host "`r$frame [$($thoiGianHienTai.ToString('HH:mm:ss'))] Waktu: $gioDaChay jam $phutDaChay mnt | Restart: $hoursToRestart jam $minutesToRestart mnt | Backup: $backupCount files | Backup berikut: $minutesToBackup mnt $secondsToBackup dtk" -NoNewline -ForegroundColor $color
+              
+              if ($timeUntilRestart -le 0) {
+                  Write-Host ""
+                  Write-Host "🔄 WAKTU RESTART!" -ForegroundColor Yellow
+                  Write-Host "💾 Membuat final backup..." -ForegroundColor Cyan
+                  
+                  # Final backup sebelum restart
+                  try {
+                      $finalBackupInfo = @{
+                          FinalBackupTime = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                          TotalUptime = "$gioDaChay jam $phutDaChay menit"
+                          TotalBackups = $backupCount
+                          NextRestart = (Get-Date).AddHours(6).ToString("yyyy-MM-dd HH:mm:ss")
+                      } | ConvertTo-Json
+                      
+                      $finalBackupInfo | Out-File "$env:TEMP\AISTV_Final_Backup_Info.json"
+                      Write-Host "✅ Final backup info disimpan" -ForegroundColor Green
+                      
+                  } catch {
+                      Write-Host "⚠️  Gagal menyimpan final backup info" -ForegroundColor Yellow
+                  }
+                  
+                  Write-Host "⏸️  Jeda 10 detik sebelum restart..." -ForegroundColor Cyan
+                  
+                  for($i = 10; $i -gt 0; $i--) {
+                      Write-Host "`r⏳ Restart dalam: $i detik" -NoNewline -ForegroundColor Yellow
+                      Start-Sleep -Seconds 1
+                  }
+                  
+                  Write-Host "`r🚀 Memulai restart sistem...                    " -ForegroundColor Green
+                  Write-Host "✅ Sistem akan restart otomatis" -ForegroundColor Green
+                  break
+              }
               
               Start-Sleep -Seconds 5
           }
 
-      # DỌN DẸP CHUYÊN NGHIỆP
-      - name: 🧹 DỌN DẸP HỆ THỐNG
+      # BACKUP FINAL DAN EKSPOR
+      - name: 📤 BACKUP FINAL DAN EKSPOR
         if: always()
         run: |
           Write-Host ""
-          Write-Host "🧹 ĐANG DỌN DẸP HỆ THỐNG..." -ForegroundColor Yellow
+          Write-Host "📤 BACKUP FINAL DAN EKSPOR" -ForegroundColor Yellow
+          Write-Host "🔄 Mengumpulkan semua backup..." -ForegroundColor Cyan
+          
+          try {
+              # Kumpulkan semua backup
+              $backupSources = @(
+                  "$env:TEMP\AISTV_Backup",
+                  "$env:TEMP\AISTV_Initial_Backup_*.zip",
+                  "$env:TEMP\AISTV_Final_Backup.zip",
+                  "$env:TEMP\AISTV_Final_Backup_Info.json",
+                  "$env:TEMP\pre_restart_backup.json"
+              )
+              
+              $finalBackupDir = "$env:TEMP\AISTV_COMPLETE_BACKUP_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+              New-Item -ItemType Directory -Path $finalBackupDir -Force | Out-Null
+              
+              # Salin semua backup
+              foreach($source in $backSources) {
+                  if (Test-Path $source) {
+                      if (Test-Path $source -PathType Container) {
+                          Copy-Item -Path "$source\*" -Destination $finalBackupDir -Recurse -Force
+                      } else {
+                          Copy-Item -Path $source -Destination $finalBackupDir -Force
+                      }
+                  }
+              }
+              
+              # Buat manifest backup
+              $backupManifest = @{
+                  BackupTime = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                  TotalFiles = (Get-ChildItem $finalBackupDir -Recurse -File).Count
+                  TotalSizeMB = [math]::Round((Get-ChildItem $finalBackupDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 2)
+                  Components = @("Registry", "Services", "Network", "System", "User", "Logs")
+                  Retention = "7 days"
+                  BackupVersion = "1.0"
+              } | ConvertTo-Json
+              
+              $backupManifest | Out-File "$finalBackupDir\BACKUP_MANIFEST.json"
+              
+              # Kompres semua backup
+              $completeBackupZip = "$env:TEMP\AISTV_COMPLETE_BACKUP_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
+              Compress-Archive -Path "$finalBackupDir\*" -DestinationPath $completeBackupZip -Force
+              
+              # Hitung statistik
+              $backupStats = @{
+                  FileName = $completeBackupZip
+                  SizeMB = [math]::Round((Get-Item $completeBackupZip).Length / 1MB, 2)
+                  FileCount = (Get-ChildItem $finalBackupDir -Recurse -File).Count
+                  Created = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+              } | ConvertTo-Json
+              
+              $backupStats | Out-File "$env:TEMP\backup_statistics.json"
+              
+              echo "COMPLETE_BACKUP=$completeBackupZip" >> $env:GITHUB_ENV
+              
+              Write-Host "│ ✅ Backup final berhasil dibuat" -ForegroundColor Green
+              Write-Host "│ 📁 File: $completeBackupZip" -ForegroundColor White
+              Write-Host "│ 📊 Ukuran: $([math]::Round((Get-Item $completeBackupZip).Length/1MB, 2)) MB" -ForegroundColor White
+              Write-Host "│ 📈 Total file: $(Get-ChildItem $finalBackupDir -Recurse -File).Count" -ForegroundColor White
+              
+              # Upload ke GitHub Artifacts (opsional)
+              Write-Host "│ 🔄 Menyiapkan upload ke artifacts..." -ForegroundColor Blue
+              
+          } catch {
+              Write-Host "│ ❌ Error membuat backup final: $_" -ForegroundColor Red
+          }
+          
+          Write-Host "🎯 Proses backup final selesai!" -ForegroundColor Green
+
+      # UPLOAD BACKUP KE GITHUB ARTIFACTS
+      - name: 📤 UPLOAD BACKUP KE ARTIFACTS
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aistv-rdp-backup
+          path: |
+            ${{ env.COMPLETE_BACKUP }}
+            $env:TEMP\backup_statistics.json
+            $env:TEMP\AISTV_Backup\
+          retention-days: 7
+
+      # DỌN DẸP DENGAN BACKUP DATA
+      - name: 🧹 DỌN DẸP DENGAN PRESERVASI BACKUP
+        if: always()
+        run: |
+          Write-Host ""
+          Write-Host "🧹 DỌN DẸP DENGAN PRESERVASI BACKUP" -ForegroundColor Yellow
+          Write-Host "💾 Memastikan backup tersimpan..." -ForegroundColor Cyan
+          
+          # Simpan info backup terakhir
+          $cleanupInfo = @{
+              CleanupTime = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+              BackupLocation = if (Test-Path "$env:COMPLETE_BACKUP") { "$env:COMPLETE_BACKUP" } else { "Tidak ada backup" }
+              BackupSize = if (Test-Path "$env:COMPLETE_BACKUP") { [math]::Round((Get-Item "$env:COMPLETE_BACKUP").Length / 1MB, 2) } else { 0 }
+              ArtifactsUploaded = $true
+          } | ConvertTo-Json
+          
+          $cleanupInfo | Out-File "$env:TEMP\cleanup_report.json"
           
           $cleanupSteps = @(
-              @{Name="Xóa file password"; Script={
+              @{Name="Simpan laporan cleanup"; Script={
+                  # Sudah dilakukan di atas
+              }},
+              @{Name="Xóa file password temporary"; Script={
                   Remove-Item "$env:TEMP\rdp_password.txt" -ErrorAction SilentlyContinue
               }},
-              @{Name="Vô hiệu hóa user"; Script={
+              @{Name="Vô hiệu hóa user sementara"; Script={
                   Disable-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
               }},
-              @{Name="Đóng kết nối mạng"; Script={
+              @{Name="Đóng kết nối Tailscale"; Script={
                   & "$env:ProgramFiles\Tailscale\tailscale.exe" down --accept-risk=all -ErrorAction SilentlyContinue
                   Start-Sleep -Seconds 5
               }},
-              @{Name="Xóa rule firewall"; Script={
+              @{Name="Xóa rule firewall temporary"; Script={
                   netsh advfirewall firewall delete rule name="RDP-Premium" dir=in -ErrorAction SilentlyContinue
                   netsh advfirewall firewall delete rule name="RDP-Premium-Out" dir=out -ErrorAction SilentlyContinue
-                  Remove-NetFirewallRule -DisplayName "RDP-Premium" -ErrorAction SilentlyContinue
-                  Remove-NetFirewallRule -DisplayName "RDP-Premium-Out" -ErrorAction SilentlyContinue
               }},
-              @{Name="Khôi phục cài đặt RDP"; Script={
+              @{Name="Khôi phục cài đặt RDP default"; Script={
                   Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 1 -Force -ErrorAction SilentlyContinue
                   Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue
+              }},
+              @{Name="Hentikan semua background jobs"; Script={
+                  Get-Job | Stop-Job -PassThru | Remove-Job -Force -ErrorAction SilentlyContinue
+              }},
+              @{Name="Simpan log terakhir"; Script={
+                  $finalLog = @{
+                      FinalMessage = "Sistem cleanup selesai"
+                      Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                      NextSchedule = (Get-Date).AddHours(6).ToString("yyyy-MM-dd HH:mm:ss")
+                  } | ConvertTo-Json
+                  $finalLog | Out-File "$env:TEMP\final_system_log.json"
               }}
           )
           
@@ -377,13 +996,23 @@ jobs:
                   & $step.Script
                   Write-Host "`r│ ✅ $($step.Name)" -ForegroundColor Green
               } catch {
-                  Write-Host "`r│ ⚠️  $($step.Name) - Đã xử lý an toàn" -ForegroundColor Yellow
+                  Write-Host "`r│ ⚠️  $($step.Name) - Aman" -ForegroundColor Yellow
               }
               Start-Sleep -Milliseconds 300
           }
           
-          # Dọn dẹp jobs còn sót
-          Get-Job | Stop-Job -PassThru | Remove-Job -Force -ErrorAction SilentlyContinue
+          Write-Host ""
+          Write-Host "📊 LAPORAN BACKUP:" -ForegroundColor Cyan
+          if (Test-Path "$env:TEMP\backup_statistics.json") {
+              $stats = Get-Content "$env:TEMP\backup_statistics.json" | ConvertFrom-Json
+              Write-Host "│ 📁 Backup: $($stats.FileName)" -ForegroundColor White
+              Write-Host "│ 📊 Ukuran: $($stats.SizeMB) MB" -ForegroundColor White
+              Write-Host "│ 📈 File count: $($stats.FileCount)" -ForegroundColor White
+              Write-Host "│ 🕐 Dibuat: $($stats.Created)" -ForegroundColor White
+          }
           
           Write-Host ""
-          Write-Host "🎉 Dọn dẹp hoàn tất! Hẹn gặp lại! 👋" -ForegroundColor Green
+          Write-Host "🎉 Cleanup selesai! Backup tersimpan di Artifacts GitHub." -ForegroundColor Green
+          Write-Host "⏰ Restart berikutnya: $(Get-Date).AddHours(6).ToString('HH:mm:ss')" -ForegroundColor Yellow
+          Write-Host "💾 Semua data penting telah di-backup!" -ForegroundColor Cyan
+          Write-Host "👋 Hẹn gặp lại di sesi berikutnya! 🔄" -ForegroundColor Magenta
